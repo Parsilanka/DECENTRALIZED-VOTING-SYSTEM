@@ -47,6 +47,28 @@ npm run dev
 
 Navigate to `http://localhost:3000` to interact with your decentralized voting system!
 
+## Cloud Deployment (Vercel)
+
+This project is configured as a monorepo for Vercel.
+
+### 1. MongoDB Atlas
+- Create a free cluster at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
+- Your connection string: `mongodb+srv://rtemeritus00_db_user:<db_password>@cluster0.ej8nevl.mongodb.net/`
+
+### 2. Vercel Setup
+- Import your GitHub repository into [Vercel](https://vercel.com).
+- Vercel will detect the `vercel.json` and `frontend/` directory.
+- Add the following **Environment Variables** in the Vercel Dashboard:
+  - `SEPOLIA_RPC_URL`: Your Alchemy/Infura URL.
+  - `ADMIN_PRIVATE_KEY`: Your Admin private key.
+  - `CONTRACT_ADDRESS`: Deployed contract address.
+  - `MONGODB_URI`: Your MongoDB Atlas connection string.
+  - `NEXT_PUBLIC_API_URL`: Set this to your Vercel deployment URL (e.g., `https://your-project.vercel.app`).
+  - `NEXT_PUBLIC_CONTRACT_ADDRESS`: Deployed contract address.
+
+### 3. Deploy
+- Vercel will build the Next.js frontend and the Flask backend automatically!
+
 ## Testing
 To test the smart contracts on a local Hardhat node:
 1. Terminal 1: `npx hardhat node`
