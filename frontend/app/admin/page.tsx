@@ -14,17 +14,21 @@ import {
   ChevronRight,
   Power,
   RefreshCcw,
-  Loader2
+  Loader2,
+  CheckCircle,
+  UserCheck
 } from 'lucide-react';
 import { createElection, addCandidate, registerVoter, getElections, endElection } from '@/lib/api';
+import { getPendingVoters, approveVoter as apiApproveVoter } from '@/lib/auth';
 import { useWallet } from '@/context/WalletContext';
 import { useToast } from '@/context/ToastContext';
 import { ethers } from 'ethers';
 
 export default function AdminDashboard() {
-  const { address, isAdmin, loading: walletLoading } = useWallet();
+  const { address, isAdmin, isLoggedIn, token, loading: walletLoading } = useWallet();
   const { showToast } = useToast();
   const [elections, setElections] = useState<any[]>([]);
+  const [voterRequests, setVoterRequests] = useState<any[]>([]);
   const [refresh, setRefresh] = useState(0);
 
   const getAdminHeaders = async (action: string) => {
@@ -39,13 +43,24 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (isAdmin) {
-      const fetchElections = () => getElections().then(setElections).catch(() => showToast('error', "Failed to load elections"));
-      fetchElections();
-      const interval = setInterval(fetchElections, 10000); // 10s polling
+    if (isAdmin && isLoggedIn && token) {
+      const fetchData = async () => {
+        try {
+          const [electionData, requestData] = await Promise.all([
+            getElections(),
+            getPendingVoters(token)
+          ]);
+          setElections(electionData);
+          setVoterRequests(requestData);
+        } catch (err) {
+          console.error("Fetch error", err);
+        }
+      };
+      fetchData();
+      const interval = setInterval(fetchData, 10000); // 10s polling
       return () => clearInterval(interval);
     }
-  }, [isAdmin, refresh, showToast]);
+  }, [isAdmin, isLoggedIn, token, refresh, showToast]);
 
   if (walletLoading) return <div className="p-12 text-center text-gray-400">Verifying Admin Status...</div>;
   if (!address || !isAdmin) return <AdminAccessDenied />;
@@ -67,7 +82,7 @@ export default function AdminDashboard() {
         <div className="xl:col-span-1 space-y-8">
           <CreateElectionForm onSuccess={() => setRefresh(r => r + 1)} getHeaders={getAdminHeaders} />
           <AddCandidateForm elections={elections} onSuccess={() => setRefresh(r => r + 1)} getHeaders={getAdminHeaders} />
-          <RegisterVoterForm getHeaders={getAdminHeaders} />
+          <PendingVoterRequests requests={voterRequests} token={token!} onRefresh={() => setRefresh(r => r + 1)} />
         </div>
 
         <div className="xl:col-span-2 space-y-8">
@@ -302,6 +317,56 @@ function ElectionsTable({ elections, onRefresh, getHeaders }: any) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function PendingVoterRequests({ requests, token, onRefresh }: any) {
+  const [acting, setActing] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  const handleApprove = async (address: string) => {
+    setActing(address);
+    showToast('loading', "Broadcasting voter whitelisting...");
+    try {
+      await apiApproveVoter(address, token);
+      showToast('success', "Voter approved! Whitelisting in progress...");
+      onRefresh();
+    } catch (err) {
+      showToast('error', "Approval failed");
+    } finally {
+      setActing(null);
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-900 p-8 rounded-[2rem] shadow-xl border border-gray-100 dark:border-gray-800 space-y-6">
+       <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-green-50 dark:bg-green-900/30 text-green-600 rounded-xl flex items-center justify-center">
+          <UserCheck className="w-6 h-6" />
+        </div>
+        <h2 className="text-xl font-bold dark:text-white">Voter Requests</h2>
+      </div>
+      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+        {requests.length === 0 && (
+          <div className="text-center py-8 text-gray-400 text-sm">No pending requests</div>
+        )}
+        {requests.map((req: any) => (
+          <div key={req.address} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl flex items-center justify-between group">
+            <div className="min-w-0">
+               <p className="font-bold dark:text-white text-sm truncate">{req.name}</p>
+               <p className="text-[10px] font-mono text-gray-400 truncate">{req.address}</p>
+            </div>
+            <button 
+              onClick={() => handleApprove(req.address)}
+              disabled={acting === req.address}
+              className="p-2 bg-white dark:bg-gray-800 text-green-500 hover:text-white hover:bg-green-500 rounded-xl shadow-sm border dark:border-gray-700 transition-all"
+            >
+              {acting === req.address ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

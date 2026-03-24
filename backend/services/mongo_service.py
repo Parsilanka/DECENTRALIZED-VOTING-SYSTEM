@@ -10,7 +10,8 @@ except Exception as e:
     
 mock_db = {
     'elections': [],
-    'voters': []
+    'voters': [],
+    'voter_requests': []
 }
 
 def get_col(name):

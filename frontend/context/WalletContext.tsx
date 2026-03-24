@@ -1,13 +1,19 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { connectWallet } from '@/lib/web3';
+import { getChallenge, login as apiLogin, getMe } from '@/lib/auth';
+import { ethers } from 'ethers';
 
 interface WalletContextType {
   address: string | null;
   isAdmin: boolean;
+  isLoggedIn: boolean;
+  token: string | null;
   isCorrectNetwork: boolean;
   loading: boolean;
   connect: () => Promise<void>;
+  loginSIWE: () => Promise<void>;
+  logout: () => void;
   disconnect: () => void;
 }
 
@@ -17,6 +23,8 @@ const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS || "0x272b49179565b4
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(true);
   const [loading, setLoading] = useState(true);
 
@@ -79,19 +87,63 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginSIWE = async () => {
+    if (!address) return;
+    setLoading(true);
+    try {
+      const { message } = await getChallenge(address);
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const signature = await signer.signMessage(message);
+      
+      const res = await apiLogin(address, signature, message);
+      setToken(res.token);
+      setIsLoggedIn(true);
+      localStorage.setItem('votechain_token', res.token);
+    } catch (err) {
+      console.error("SIWE Login failed", err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = () => {
+    setToken(null);
+    setIsLoggedIn(false);
+    localStorage.removeItem('votechain_token');
+  };
+
   const disconnect = () => {
     setAddress(null);
+    logout();
   };
 
   const isAdmin = address?.toLowerCase() === ADMIN_ADDRESS.toLowerCase();
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem('votechain_token');
+    if (savedToken && address) {
+      getMe(savedToken)
+        .then(() => {
+          setToken(savedToken);
+          setIsLoggedIn(true);
+        })
+        .catch(() => logout());
+    }
+  }, [address]);
 
   return (
     <WalletContext.Provider value={{ 
       address, 
       isAdmin, 
+      isLoggedIn,
+      token,
       isCorrectNetwork, 
       loading, 
       connect, 
+      loginSIWE,
+      logout,
       disconnect 
     }}>
       {children}

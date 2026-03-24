@@ -10,13 +10,25 @@ import {
   Moon, 
   Sun,
   Menu,
-  X
+  X,
+  ShieldCheck,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { address, isAdmin, connect, disconnect, loading } = useWallet();
+  const { 
+    address, 
+    isAdmin, 
+    isLoggedIn, 
+    connect, 
+    disconnect, 
+    loginSIWE, 
+    logout, 
+    loading 
+  } = useWallet();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -41,11 +53,13 @@ export default function Navbar() {
 
   const navLinks = [
     { name: 'Home', href: '/', icon: Vote },
-    { name: 'Profile', href: '/profile', icon: User },
   ];
 
-  if (isAdmin) {
-    navLinks.push({ name: 'Admin', href: '/admin', icon: LayoutDashboard });
+  if (isLoggedIn) {
+     navLinks.push({ name: 'Profile', href: '/profile', icon: User });
+     if (isAdmin) {
+       navLinks.push({ name: 'Admin', href: '/admin', icon: LayoutDashboard });
+     }
   }
 
   return (
@@ -91,16 +105,37 @@ export default function Navbar() {
 
               {address ? (
                 <div className="flex items-center gap-3">
-                   <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-mono border border-blue-100 dark:border-blue-800 hidden lg:block">
-                    {address.slice(0, 6)}...{address.slice(-4)}
-                  </div>
-                  <button 
-                    onClick={disconnect}
-                    className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition"
-                    title="Disconnect"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                   {!isLoggedIn ? (
+                     <button
+                       onClick={loginSIWE}
+                       className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full font-bold shadow-lg transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
+                       disabled={loading}
+                     >
+                       <LogIn className="w-4 h-4" />
+                       {loading ? 'Verifying...' : 'Sign In'}
+                     </button>
+                   ) : (
+                     <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-xs font-bold border border-green-100 dark:border-green-800">
+                           <ShieldCheck className="w-4 h-4" />
+                           {address.slice(0, 6)}...
+                        </div>
+                        <button 
+                          onClick={logout}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition"
+                          title="Logout Session"
+                        >
+                          <LogOut className="w-5 h-5" />
+                        </button>
+                     </div>
+                   )}
+                   <button 
+                     onClick={disconnect}
+                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition"
+                     title="Disconnect Wallet"
+                   >
+                     <X className="w-5 h-5" />
+                   </button>
                 </div>
               ) : (
                 <button

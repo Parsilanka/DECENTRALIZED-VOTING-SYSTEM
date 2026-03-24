@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from backend.routes.admin import admin_bp
 from backend.routes.voter import voter_bp
 from backend.routes.results import results_bp
+from backend.routes.auth import auth_bp
+from backend.routes.voter_requests import voter_req_bp
 
 load_dotenv()
 
@@ -29,6 +31,8 @@ limiter = Limiter(
 app.register_blueprint(admin_bp)
 app.register_blueprint(voter_bp)
 app.register_blueprint(results_bp)
+app.register_blueprint(auth_bp)
+app.register_blueprint(voter_req_bp)
 
 @app.route('/')
 def health_check():
