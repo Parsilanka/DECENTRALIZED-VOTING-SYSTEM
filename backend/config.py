@@ -8,6 +8,7 @@ class Config:
     MONGO_URI = os.environ.get('MONGODB_URI', 'mongodb://127.0.0.1:27017/voting_dapp')
     SEPOLIA_RPC_URL = os.environ.get('SEPOLIA_RPC_URL')
     ADMIN_PRIVATE_KEY = os.environ.get('ADMIN_PRIVATE_KEY')
+    ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS', '0x272b49179565b4A6103c8939f24Fcd4da12f8Ed3')
     
     # Try local build output
     try:

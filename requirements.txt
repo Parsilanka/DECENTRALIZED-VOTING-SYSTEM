@@ -5,3 +5,4 @@ py-solc-x
 pymongo
 python-dotenv
 pytest
+flask-limiter

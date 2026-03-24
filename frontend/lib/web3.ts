@@ -1,17 +1,17 @@
 import { ethers } from 'ethers';
 
-export const connectWallet = async () => {
+export const connectWallet = async (): Promise<{ provider: ethers.BrowserProvider, signer: ethers.JsonRpcSigner, address: string }> => {
   if (typeof window.ethereum === 'undefined') {
     throw new Error("MetaMask is not installed");
   }
 
-  const provider = new ethers.BrowserProvider(window.ethereum);
+  const provider = new ethers.BrowserProvider(window.ethereum as any);
   const network = await provider.getNetwork();
   
   // Enforce Sepolia chain ID: 11155111
   if (network.chainId !== 11155111n) {
     try {
-      await window.ethereum.request({
+      await (window as any).ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: '0xaa36a7' }], // 11155111 in hex
       });
@@ -21,6 +21,8 @@ export const connectWallet = async () => {
       }
       throw switchError;
     }
+    // Refresh provider after switch
+    return connectWallet();
   }
 
   const accounts = await provider.send('eth_requestAccounts', []);
@@ -39,5 +41,7 @@ export const createVoteTransaction = async (electionId: number, candidateId: num
   
   const contract = new ethers.Contract(contractAddress, abi, signer);
   const tx = await contract.castVote(electionId, candidateId);
-  return tx.hash; // Standard flow: metamask broadcasts it.
+  // Wait for 1 confirmation to be sure
+  await tx.wait(1);
+  return tx.hash;
 };

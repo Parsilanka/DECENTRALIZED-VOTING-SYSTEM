@@ -10,6 +10,7 @@ def list_elections():
         elections = get_all_elections_meta()
         return jsonify(elections), 200
     except Exception as e:
+        print(f"ERROR in list_elections: {e}")
         return jsonify({"error": str(e)}), 500
 
 @results_bp.route('/api/elections/<int:election_id>', methods=['GET'])

@@ -70,6 +70,22 @@ def register_voter_onchain(address):
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     return w3.to_hex(tx_hash)
 
+def end_election_onchain(election_id):
+    w3, contract = get_contract()
+    if not contract: return None
+    
+    admin = get_admin_account(w3)
+    nonce = w3.eth.get_transaction_count(admin.address)
+    tx = contract.functions.endElection(election_id).build_transaction({
+        "chainId": w3.eth.chain_id,
+        "from": admin.address,
+        "nonce": nonce
+    })
+    signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin.key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    return w3.to_hex(tx_hash)
+
 def get_onchain_results(election_id):
     w3, contract = get_contract()
     if not contract: return []
