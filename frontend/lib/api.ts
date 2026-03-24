@@ -12,12 +12,12 @@ export const getResults = (id: number) => api.get(`/api/results/${id}`).then(res
 export const endElection = (id: number, headers = {}) => api.post(`/api/admin/end-election/${id}`, {}, { headers }).then(res => res.data);
 
 export const createElection = async (data: any, headers = {}) => {
-  const response = await api.post('/admin/election', data, { headers });
+  const response = await api.post('/api/admin/election', data, { headers });
   return response.data;
 };
 export const addCandidate = (data: any, headers = {}) => api.post('/api/admin/candidate', data, { headers }).then(res => res.data);
 export const registerVoter = async (data: any, headers = {}) => {
-  const response = await api.post('/admin/register-voter', data, { headers });
+  const response = await api.post('/api/admin/register-voter', data, { headers });
   return response.data;
 };
 

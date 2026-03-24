@@ -40,7 +40,10 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (isAdmin) {
-      getElections().then(setElections).catch(() => showToast('error', "Failed to load elections"));
+      const fetchElections = () => getElections().then(setElections).catch(() => showToast('error', "Failed to load elections"));
+      fetchElections();
+      const interval = setInterval(fetchElections, 10000); // 10s polling
+      return () => clearInterval(interval);
     }
   }, [isAdmin, refresh, showToast]);
 
@@ -163,7 +166,7 @@ function AddCandidateForm({ elections, onSuccess, getHeaders }: any) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <select required value={form.election_id} onChange={e => setForm({...form, election_id: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800/50 border-none rounded-2xl p-4 dark:text-white outline-none appearance-none cursor-pointer">
           <option value="">Select Election</option>
-          {elections.filter((e: any) => e.status === 'Active').map((e: any) => (
+          {elections.filter((e: any) => e.status !== 'Ended').map((e: any) => (
             <option key={e.election_id} value={e.election_id}>{e.title}</option>
           ))}
         </select>
@@ -273,7 +276,7 @@ function ElectionsTable({ elections, onRefresh, getHeaders }: any) {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500">
                     <Calendar className="w-3 h-3 text-indigo-400" />
-                    {new Date(election.end_time * 1000).toLocaleDateString()}
+                    {election.end_time ? new Date(election.end_time * 1000).toLocaleDateString() : 'Syncing...'}
                   </div>
                 </td>
                 <td className="px-6 py-4">

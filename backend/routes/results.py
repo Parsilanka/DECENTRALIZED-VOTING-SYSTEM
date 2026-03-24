@@ -8,6 +8,13 @@ results_bp = Blueprint('results', __name__)
 def list_elections():
     try:
         elections = get_all_elections_meta()
+        import time
+        now = int(time.time())
+        for e in elections:
+            if e.get('end_time') and now > e['end_time']:
+                e['status'] = 'Ended'
+            else:
+                e['status'] = 'Active'
         return jsonify(elections), 200
     except Exception as e:
         print(f"ERROR in list_elections: {e}")

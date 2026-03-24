@@ -1,4 +1,6 @@
+import threading
 from flask import Blueprint, request, jsonify
+from backend.config import Config
 from backend.services.web3_service import (
     create_election_onchain, 
     add_candidate_onchain, 
@@ -37,11 +39,33 @@ def create_election():
         return jsonify({"error": "Admin signature required"}), 401
     data = request.json
     try:
-        election_id = create_election_onchain(data['title'], data['start_time'], data['end_time'])
-        if election_id is not None:
-            create_election_meta(election_id, data['title'], data['description'], data['start_time'], data['end_time'])
-            return jsonify({"message": "Election created", "election_id": election_id}), 201
-        return jsonify({"error": "Failed to create on-chain"}), 400
+        # Define a background task
+        def sync_election_task(title, description, start_time, end_time):
+            print(f"BACKGROUND: Starting sync for election '{title}'...")
+            try:
+                election_id = create_election_onchain(title, start_time, end_time)
+                if election_id is not None:
+                    print(f"BACKGROUND: Election mined with ID {election_id}. Updating meta...")
+                    create_election_meta(election_id, title, description, start_time, end_time)
+                    print(f"BACKGROUND: Meta updated for election {election_id}")
+                else:
+                    print(f"BACKGROUND ERROR: Failed to get election_id for '{title}'")
+            except Exception as e:
+                print(f"BACKGROUND ERROR in sync_election_task: {e}")
+
+        # Start the background thread
+        thread = threading.Thread(target=sync_election_task, args=(
+            data['title'], 
+            data.get('description', ''), 
+            data['start_time'], 
+            data['end_time']
+        ))
+        thread.start()
+
+        return jsonify({
+            "message": "Election transaction broadcasted. It will appear once mined on-chain (approx. 20s).",
+            "status": "processing"
+        }), 202
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -51,11 +75,29 @@ def add_candidate():
         return jsonify({"error": "Admin signature required"}), 401
     data = request.json
     try:
-        candidate_id = add_candidate_onchain(data['election_id'], data['name'], data['party'])
-        if candidate_id is not None:
-            add_candidate_meta(data['election_id'], candidate_id, data['name'], data['party'], data['bio'])
-            return jsonify({"message": "Candidate added", "candidate_id": candidate_id}), 201
-        return jsonify({"error": "Failed to add on-chain"}), 400
+        def sync_candidate_task(election_id, name, party, bio):
+            print(f"BACKGROUND: Adding candidate '{name}' to election {election_id}...")
+            try:
+                candidate_id = add_candidate_onchain(election_id, name, party)
+                if candidate_id is not None:
+                    print(f"BACKGROUND: Candidate mined with ID {candidate_id}. Updating meta...")
+                    add_candidate_meta(election_id, candidate_id, name, party, bio)
+                    print(f"BACKGROUND: Meta updated for candidate {candidate_id}")
+            except Exception as e:
+                print(f"BACKGROUND ERROR in sync_candidate_task: {e}")
+
+        thread = threading.Thread(target=sync_candidate_task, args=(
+            data['election_id'], 
+            data['name'], 
+            data['party'], 
+            data.get('bio', '')
+        ))
+        thread.start()
+
+        return jsonify({
+            "message": "Candidate addition broadcasted. It will appear once mined on-chain.",
+            "status": "processing"
+        }), 202
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -65,8 +107,16 @@ def register_voter():
         return jsonify({"error": "Admin signature required"}), 401
     data = request.json
     try:
-        tx_hash = register_voter_onchain(data['address'])
-        return jsonify({"message": "Voter registered", "tx_hash": tx_hash}), 200
+        def sync_voter_task(address):
+            register_voter_onchain(address)
+
+        thread = threading.Thread(target=sync_voter_task, args=(data['address'],))
+        thread.start()
+
+        return jsonify({
+            "message": "Voter registration broadcasted. Whitelisting will be complete in ~20s.",
+            "status": "processing"
+        }), 202
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -75,7 +125,15 @@ def end_election_route(election_id):
     if not get_admin_auth():
         return jsonify({"error": "Admin signature required"}), 401
     try:
-        tx_hash = end_election_onchain(election_id)
-        return jsonify({"message": "Election ended", "tx_hash": tx_hash}), 200
+        def sync_end_task(eid):
+            end_election_onchain(eid)
+
+        thread = threading.Thread(target=sync_end_task, args=(election_id,))
+        thread.start()
+
+        return jsonify({
+            "message": "Election termination broadcasted. Results will be finalized shortly.",
+            "status": "processing"
+        }), 202
     except Exception as e:
         return jsonify({"error": str(e)}), 400
