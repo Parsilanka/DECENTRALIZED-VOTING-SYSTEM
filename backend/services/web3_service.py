@@ -27,7 +27,7 @@ def create_election_onchain(title, start_time, end_time):
     })
     signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin.key)
     tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=240)
     
     events = contract.events.ElectionCreated().process_receipt(receipt)
     if events:
@@ -47,7 +47,7 @@ def add_candidate_onchain(election_id, name, party):
     })
     signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin.key)
     tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=240)
     
     events = contract.events.CandidateAdded().process_receipt(receipt)
     if events:
@@ -67,7 +67,7 @@ def register_voter_onchain(address):
     })
     signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin.key)
     tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=240)
     return w3.to_hex(tx_hash)
 
 def end_election_onchain(election_id):
@@ -83,7 +83,7 @@ def end_election_onchain(election_id):
     })
     signed_tx = w3.eth.account.sign_transaction(tx, private_key=admin.key)
     tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=240)
     return w3.to_hex(tx_hash)
 
 def get_onchain_results(election_id):
@@ -120,3 +120,82 @@ def cast_vote_relay(signed_tx_hex):
     w3 = get_w3()
     tx_hash = w3.eth.send_raw_transaction(signed_tx_hex)
     return w3.to_hex(tx_hash)
+
+def get_voters_for_election(election_id):
+    w3, contract = get_contract()
+    if not contract: return []
+    
+    try:
+        # Use get_logs for better compatibility with RPC providers
+        latest_block = w3.eth.block_number
+        # Use a small range (50,000 blocks) to prevent RPC timeouts
+        search_from = max(0, latest_block - 50000)
+        
+        # Get VoteCast events
+        events = contract.events.VoteCast.get_logs(
+            from_block=search_from,
+            to_block='latest',
+            argument_filters={'electionId': election_id}
+        )
+        
+        # Extract unique voter addresses
+        voters = []
+        for event in events:
+            voters.append(event['args']['voter'])
+        
+        return list(set(voters))
+    except Exception as e:
+        print(f"Error fetching voters from chain via get_logs: {e}")
+        return []
+
+def check_user_voted(election_id, address):
+    w3, contract = get_contract()
+    if not contract: return False
+    try:
+        # hasVoted is a mapping from electionId => (from address => bool)
+        return contract.functions.hasVoted(election_id, address).call()
+    except Exception as e:
+        print(f"Error checking hasVoted: {e}")
+        return False
+
+def get_voter_history_onchain(address):
+    w3, contract = get_contract()
+    if not contract: return []
+    
+    try:
+        latest_block = w3.eth.block_number
+        # Search last 5,000 blocks for voter history (faster and more reliable)
+        search_from = max(0, latest_block - 5000)
+        
+        events = contract.events.VoteCast.get_logs(
+            from_block=search_from,
+            to_block='latest',
+            argument_filters={'voter': w3.to_checksum_address(address)}
+        )
+        
+        history = []
+        for event in events:
+            election_id = event['args']['electionId']
+            candidate_id = event['args']['candidateId']
+            
+            # Fetch election and candidate names for display
+            election = contract.functions.elections(election_id).call()
+            # election = [id, title, start, end, active]
+            
+            # Candidates are stored in a mapping/array inside the contract logic
+            # We can get the candidate name from the results or a helper
+            # For simplicity, we'll return the IDs and let the caller enrich if needed,
+            # but let's try to get the title at least.
+            
+            history.append({
+                "election_id": election_id,
+                "candidate_id": candidate_id,
+                "election_title": election[1],
+                "block_number": event['blockNumber'],
+                "transaction_hash": w3.to_hex(event['transactionHash'])
+            })
+            
+        return history
+    except Exception as e:
+        print(f"Error fetching voter history: {e}")
+        return []

@@ -29,3 +29,8 @@ export const castVoteAction = async (electionId: number, candidateId: number) =>
 };
 
 export const relayVote = (signedTx: string) => api.post('/api/vote', { signed_tx: signedTx }).then(res => res.data);
+
+export const getProtocolEvents = () => api.get('/api/admin/protocol-events').then(res => res.data);
+
+export const getElectionVoters = (id: number) => api.get(`/api/elections/${id}/voters`).then(res => res.data);
+export const checkUserVoted = (electionId: number, address: string) => api.get(`/api/voters/has-voted/${electionId}/${address}`).then(res => res.data);

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useWallet } from '@/context/WalletContext';
 import { ethers } from 'ethers';
 import { useToast } from '@/context/ToastContext';
-import { applyToVote } from '@/lib/auth';
+import { applyToVote, getVoterStatus, updateVoterProfile, getVoterActivity } from '@/lib/auth';
 import { 
   User, 
   Wallet, 
@@ -18,17 +18,24 @@ import {
   UserPlus,
   Loader2,
   Clock,
-  LogIn
+  LogIn,
+  ChevronRight,
+  AlertCircle,
+  Edit2,
+  Save
 } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { address, isCorrectNetwork, isLoggedIn, loginSIWE, loading: walletLoading } = useWallet();
+  const { address, isCorrectNetwork, isLoggedIn, loginSIWE, token, loading: walletLoading } = useWallet();
   const { showToast } = useToast();
   const [balance, setBalance] = useState("0.00");
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [regStatus, setRegStatus] = useState<'none' | 'pending' | 'approved'>('none');
+  const [regStatus, setRegStatus] = useState<'none' | 'pending' | 'approved' | 'failed' | 'approving'>('none');
+  const [voterName, setVoterName] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     async function fetchVoterInfo() {
@@ -39,12 +46,16 @@ export default function ProfilePage() {
         const bal = await provider.getBalance(address);
         setBalance(ethers.formatEther(bal).slice(0, 6));
 
-        // In a real app, we'd fetch event logs here. 
-        // For now, we'll show a placeholder history to demonstrate the concept.
-        setHistory([
-          { id: 1, title: 'Presidential Election 2026', candidate: 'Alice Johnson', status: 'Confirmed', date: 'Mar 22, 2026' },
-          { id: 2, title: 'Senate Primary', candidate: 'Bob Smith', status: 'Confirmed', date: 'Feb 15, 2026' }
-        ]);
+        // Fetch registration status
+        if (token) {
+          const statusRes = await getVoterStatus(token);
+          setRegStatus(statusRes.status);
+          setVoterName(statusRes.name || "");
+          
+          // Fetch real voting history
+          const activity = await getVoterActivity(token);
+          setHistory(activity);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -52,7 +63,21 @@ export default function ProfilePage() {
       }
     }
     fetchVoterInfo();
-  }, [address, isCorrectNetwork]);
+  }, [address, isCorrectNetwork, token]);
+
+  const handleUpdateProfile = async () => {
+    if (!voterName || !token) return;
+    setEditLoading(true);
+    try {
+      await updateVoterProfile(voterName, token);
+      showToast('success', "Profile updated!");
+      setIsEditing(false);
+    } catch (err) {
+      showToast('error', "Update failed");
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   const copyAddress = () => {
     if (!address) return;
@@ -114,14 +139,39 @@ export default function ProfilePage() {
            
            <div className="flex-1 text-center md:text-left space-y-4">
               <div className="space-y-1">
-                 <h1 className="text-sm font-black uppercase tracking-widest text-blue-600">Verified Voter</h1>
-                 <div className="flex items-center justify-center md:justify-start gap-4">
-                    <p className="text-3xl md:text-4xl font-outfit font-black text-gray-900 dark:text-white truncate max-w-[250px] md:max-w-full">
-                       {address.slice(0, 10)}...{address.slice(-8)}
-                    </p>
-                    <button onClick={copyAddress} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition text-gray-400 hover:text-blue-600">
-                       {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
-                    </button>
+                 <div className="flex items-center justify-center md:justify-start gap-2">
+                   <h1 className="text-sm font-black uppercase tracking-widest text-blue-600">Verified Voter</h1>
+                   {regStatus === 'approved' && (
+                     <button 
+                       onClick={() => isEditing ? handleUpdateProfile() : setIsEditing(true)}
+                       disabled={editLoading}
+                       className="p-1 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition text-blue-600"
+                     >
+                       {editLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : isEditing ? <Save className="w-3 h-3" /> : <Edit2 className="w-3 h-3" />}
+                     </button>
+                   )}
+                 </div>
+                 <div className="flex flex-col items-center md:items-start">
+                    {isEditing ? (
+                      <input 
+                        value={voterName}
+                        onChange={(e) => setVoterName(e.target.value)}
+                        className="text-2xl font-black bg-gray-50 dark:bg-gray-800 border-b-2 border-blue-600 outline-none px-2 py-1 dark:text-white mb-2"
+                        autoFocus
+                      />
+                    ) : (
+                      <p className="text-2xl font-black text-gray-900 dark:text-white mb-1">
+                        {voterName || "Anonymous Voter"}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-center md:justify-start gap-4">
+                      <p className="text-xl md:text-2xl font-mono font-medium text-gray-400 truncate max-w-[200px] md:max-w-full">
+                          {address?.slice(0, 10)}...{address?.slice(-8)}
+                      </p>
+                      <button onClick={copyAddress} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition text-gray-400 hover:text-blue-600">
+                          {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+                      </button>
+                    </div>
                  </div>
               </div>
               
@@ -153,23 +203,33 @@ export default function ProfilePage() {
       </div>
 
       {/* Registration Section */}
-      {regStatus === 'none' && (
-         <VoterRegistrationForm address={address} onSuccess={() => setRegStatus('pending')} />
+      {(regStatus === 'none' || regStatus === 'failed') && (
+         <VoterRegistrationForm 
+           address={address} 
+           onSuccess={() => setRegStatus('pending')} 
+           isFailed={regStatus === 'failed'}
+         />
       )}
       
-      {regStatus === 'pending' && (
-         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 p-8 rounded-[2.5rem] flex items-center justify-between">
+      {(regStatus === 'pending' || regStatus === 'approving') && (
+         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-6">
                 <div className="w-16 h-16 bg-amber-100 dark:bg-amber-800 text-amber-600 rounded-3xl flex items-center justify-center">
                    <Clock className="w-8 h-8 animate-pulse" />
                 </div>
                 <div>
-                   <h3 className="text-xl font-bold dark:text-white">Application Pending</h3>
-                   <p className="text-gray-500">The administrator is currently reviewing your registration request.</p>
+                   <h3 className="text-xl font-bold dark:text-white">
+                     {regStatus === 'pending' ? 'Application Pending' : 'Finalizing Registration'}
+                   </h3>
+                   <p className="text-gray-500">
+                     {regStatus === 'pending' 
+                       ? 'The administrator is currently reviewing your registration request.' 
+                       : 'Your request has been approved and is being recorded on the blockchain.'}
+                   </p>
                 </div>
             </div>
-            <div className="hidden md:block px-6 py-3 bg-white dark:bg-gray-800 rounded-2xl text-xs font-bold text-amber-600 shadow-sm border dark:border-gray-700">
-               ETR: Under 24h
+            <div className="px-6 py-3 bg-white dark:bg-gray-800 rounded-2xl text-xs font-bold text-amber-600 shadow-sm border dark:border-gray-700">
+               {regStatus === 'pending' ? 'ETR: Under 24h' : 'Status: Processing...'}
             </div>
          </div>
       )}
@@ -187,22 +247,28 @@ export default function ProfilePage() {
            {loading ? (
              [1, 2].map(i => <div key={i} className="h-24 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />)
            ) : history.length > 0 ? (
-             history.map((item) => (
-               <div key={item.id} className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm">
+             history.map((item, idx) => (
+               <div key={idx} className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between group hover:border-blue-500 transition-all shadow-sm">
                   <div className="flex items-center gap-6">
                     <div className="w-12 h-12 bg-green-50 dark:bg-green-900/30 text-green-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition">
                        <BadgeCheck className="w-7 h-7" />
                     </div>
                     <div>
-                      <h4 className="font-bold dark:text-white">{item.title}</h4>
-                      <p className="text-sm text-gray-500">Voted for: <span className="font-bold text-gray-700 dark:text-gray-300">{item.candidate}</span></p>
+                      <h4 className="font-bold dark:text-white uppercase text-[10px] tracking-widest text-blue-600 mb-1">Official Vote Cast</h4>
+                      <h3 className="font-black dark:text-white text-lg">{item.election_title}</h3>
+                      <p className="text-xs text-gray-500 font-mono">TX: {item.transaction_hash?.slice(0, 20)}...</p>
                     </div>
                   </div>
                   <div className="text-right flex flex-col items-end gap-2">
-                     <span className="text-[10px] font-black uppercase text-gray-400">{item.date}</span>
-                     <button className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                        Receipt <ExternalLink className="w-3 h-3" />
-                     </button>
+                     <span className="text-[10px] font-black uppercase text-gray-400">Block #{item.block_number}</span>
+                     <a 
+                       href={`https://sepolia.etherscan.io/tx/${item.transaction_hash}`}
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline"
+                     >
+                        View Receipt <ExternalLink className="w-3 h-3" />
+                     </a>
                   </div>
                </div>
              ))
@@ -217,7 +283,7 @@ export default function ProfilePage() {
   );
 }
 
-function VoterRegistrationForm({ address, onSuccess }: any) {
+function VoterRegistrationForm({ address, onSuccess, isFailed }: any) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
@@ -250,6 +316,16 @@ function VoterRegistrationForm({ address, onSuccess }: any) {
                 <h2 className="text-4xl font-black">Become a Voter</h2>
                 <p className="text-indigo-100 text-lg leading-relaxed">Register your official identity to participate in upcoming on-chain elections.</p>
              </div>
+             
+             {isFailed && (
+               <div className="bg-red-500/20 backdrop-blur-md border border-red-500/30 p-4 rounded-2xl flex items-start gap-4 animate-shake">
+                  <AlertCircle className="w-6 h-6 text-red-200 shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-bold text-red-100">Previous Request Failed</p>
+                    <p className="text-red-100/70">There was an issue processing your last request. You can try submitting again below.</p>
+                  </div>
+               </div>
+             )}
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-4">

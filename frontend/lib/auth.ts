@@ -29,3 +29,23 @@ export const approveVoter = (address: string, token: string) =>
   authApi.post('/api/voters/approve', { address }, {
     headers: { Authorization: `Bearer ${token}` }
   }).then(res => res.data);
+
+export const getVoterStatus = (token: string) => 
+  authApi.get('/api/voters/status', {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(res => res.data);
+
+export const forceApproveVoter = (address: string, token: string) => 
+  authApi.post('/api/voters/force-approve', { address }, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(res => res.data);
+
+export const updateVoterProfile = (name: string, token: string) => 
+  authApi.post('/api/voters/update-profile', { name }, {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(res => res.data);
+
+export const getVoterActivity = (token: string) => 
+  authApi.get('/api/voters/activity', {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(res => res.data);

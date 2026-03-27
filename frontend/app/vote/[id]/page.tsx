@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Clock, User, CheckCircle2, AlertCircle, ChevronLeft, Loader2, ArrowRight } from 'lucide-react';
+import { Clock, User, CheckCircle2, AlertCircle, ChevronLeft, Loader2, ArrowRight, FileText } from 'lucide-react';
 import Link from 'next/link';
-import { getElection, castVoteAction } from '@/lib/api';
+import { getElection, castVoteAction, checkUserVoted } from '@/lib/api';
+import { downloadReceipt } from '@/lib/utils';
 import { useWallet } from '@/context/WalletContext';
 import { useToast } from '@/context/ToastContext';
 
@@ -11,17 +12,30 @@ export default function VotePage() {
   const { id } = useParams();
   const router = useRouter();
   const { address, connect, loading: walletLoading } = useWallet();
-  const { showToast } = useToast();
+  const { showToast, dismissToast } = useToast();
   
   const [election, setElection] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<number | null>(null);
+  const [hasVoted, setHasVoted] = useState(false);
+  const [lastVote, setLastVote] = useState<{ candidateName: string, txHash: string } | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
         const data = await getElection(Number(id));
         setElection(data);
+        
+        if (address) {
+          try {
+            console.log(`Checking voted status for ${address} in election ${id}...`);
+            const status = await checkUserVoted(Number(id), address);
+            setHasVoted(status.has_voted);
+          } catch (voterErr) {
+            console.error("Voted status check failed:", voterErr);
+            setHasVoted(false); // Assume not voted on network error to allow attempt
+          }
+        }
       } catch (err) {
         showToast('error', "Failed to load election details.");
         router.push('/');
@@ -30,7 +44,7 @@ export default function VotePage() {
       }
     }
     fetchData();
-  }, [id, router, showToast]);
+  }, [id, router, showToast, address]);
 
   const handleVote = async (candidateId: number) => {
     if (!address) {
@@ -43,10 +57,13 @@ export default function VotePage() {
 
     try {
       const res = await castVoteAction(Number(id), candidateId);
+      const votedCandidate = election.candidates.find((c: any) => c.candidate_id === candidateId);
+      setLastVote({ candidateName: votedCandidate?.name || "Unknown", txHash: res.tx_hash });
       showToast('success', "Vote cast successfully!", res.tx_hash);
       // Refresh data
       const updated = await getElection(Number(id));
       setElection(updated);
+      setHasVoted(true);
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || "Transaction failed";
       showToast('error', msg);
@@ -97,8 +114,12 @@ export default function VotePage() {
               className={`group bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-800 flex flex-col transition-all duration-300 ${isEnded ? 'opacity-70' : 'hover:border-blue-500 dark:hover:border-blue-400'}`}
             >
               <div className="flex justify-between items-start mb-6">
-                <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center">
-                  <User className="w-8 h-8" />
+                <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center overflow-hidden border-2 border-white dark:border-gray-800 shadow-lg">
+                  {candidate.image_url ? (
+                    <img src={candidate.image_url} alt={candidate.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-10 h-10" />
+                  )}
                 </div>
                 <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-xs font-bold uppercase tracking-wider">
                   {candidate.party || 'Independent'}
@@ -106,9 +127,18 @@ export default function VotePage() {
               </div>
 
               <h3 className="text-2xl font-bold dark:text-white mb-2">{candidate.name}</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mb-8 flex-1 leading-relaxed">
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4 leading-relaxed line-clamp-2">
                 {candidate.bio || "No bio provided for this candidate."}
               </p>
+
+              {candidate.manifesto && (
+                <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700">
+                  <h4 className="text-[10px] uppercase font-black text-blue-600 dark:text-blue-400 mb-2 tracking-widest">Candidate Manifesto</h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-3 italic">
+                    "{candidate.manifesto}"
+                  </p>
+                </div>
+              )}
 
               {/* Progress Bar */}
               <div className="space-y-3 mb-8">
@@ -125,10 +155,10 @@ export default function VotePage() {
               </div>
 
               <button
-                disabled={isEnded || votingId !== null}
+                disabled={isEnded || votingId !== null || hasVoted}
                 onClick={() => handleVote(candidate.candidate_id)}
                 className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all ${
-                  isEnded 
+                  isEnded || hasVoted
                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/10 active:scale-95'
                 }`}
@@ -137,6 +167,11 @@ export default function VotePage() {
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
                     Sending to Block...
+                  </>
+                ) : hasVoted ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    Already Voted
                   </>
                 ) : (
                   <>
@@ -149,6 +184,27 @@ export default function VotePage() {
           ))}
         </div>
       </div>
+
+      {lastVote && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-8 rounded-[2rem] flex flex-wrap items-center justify-between gap-6 animate-fadeIn">
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-400 rounded-2xl flex items-center justify-center shadow-inner">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Vote Recorded!</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">You successfully voted for <span className="font-bold text-green-600 dark:text-green-400">{lastVote.candidateName}</span></p>
+            </div>
+          </div>
+          <button 
+            onClick={() => downloadReceipt(election.title, lastVote.candidateName, lastVote.txHash, address || "0x")}
+            className="px-6 py-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl font-bold shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center gap-2 group"
+          >
+            <FileText className="w-5 h-5 text-blue-500 transition-transform group-hover:scale-110" />
+            Download Official Receipt
+          </button>
+        </div>
+      )}
       
       {/* Alert */}
       {!address && !isEnded && (

@@ -13,7 +13,8 @@ import {
   X,
   ShieldCheck,
   LogIn,
-  LogOut
+  LogOut,
+  Trophy
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -53,6 +54,7 @@ export default function Navbar() {
 
   const navLinks = [
     { name: 'Home', href: '/', icon: Vote },
+    { name: 'Results', href: '/results', icon: Trophy },
   ];
 
   if (isLoggedIn) {

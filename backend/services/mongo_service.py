@@ -39,26 +39,25 @@ def create_election_meta(election_id, title, description="", start_time=0, end_t
             "candidates": []
         })
 
-def add_candidate_meta(election_id, candidate_id, name, party, bio=""):
+def add_candidate_meta(election_id, candidate_id, name, party, bio="", image_url="", manifesto=""):
+    candidate_obj = {
+        "candidate_id": candidate_id,
+        "name": name,
+        "party": party,
+        "bio": bio,
+        "image_url": image_url,
+        "manifesto": manifesto
+    }
+    
     if db is not None:
         get_col('elections').update_one(
             {"election_id": election_id},
-            {"$push": {"candidates": {
-                "candidate_id": candidate_id,
-                "name": name,
-                "party": party,
-                "bio": bio
-            }}}
+            {"$push": {"candidates": candidate_obj}}
         )
     else:
         for ex in mock_db['elections']:
             if ex['election_id'] == election_id:
-                ex['candidates'].append({
-                    "candidate_id": candidate_id,
-                    "name": name,
-                    "party": party,
-                    "bio": bio
-                })
+                ex['candidates'].append(candidate_obj)
 
 def get_all_elections_meta():
     try:
@@ -77,3 +76,18 @@ def get_election_meta(election_id):
         if ex['election_id'] == election_id:
             return ex
     return None
+def log_protocol_event(message, event_type="info"):
+    import datetime
+    event = {
+        "message": message,
+        "type": event_type,
+        "timestamp": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+        "date": datetime.datetime.utcnow().isoformat()
+    }
+    if db is not None:
+        get_col('protocol_events').insert_one(event)
+    else:
+        if 'protocol_events' not in mock_db:
+            mock_db['protocol_events'] = []
+        mock_db['protocol_events'].append(event)
+    print(f"PROTOCOL_EVENT: [{event_type.upper()}] {message}")

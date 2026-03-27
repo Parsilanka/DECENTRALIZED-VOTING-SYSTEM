@@ -6,6 +6,7 @@ import {
   PieChart, Pie
 } from 'recharts';
 import { 
+  User,
   Trophy, 
   Users, 
   Vote, 
@@ -14,10 +15,12 @@ import {
   ChevronLeft,
   RefreshCcw,
   Share2,
-  TrendingUp
+  TrendingUp,
+  Download
 } from 'lucide-react';
 import Link from 'next/link';
-import { getResults } from '@/lib/api';
+import { getElection, getElectionVoters } from '@/lib/api';
+import { exportToCSV } from '@/lib/utils';
 import { useToast } from '@/context/ToastContext';
 
 const COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316'];
@@ -26,23 +29,36 @@ export default function ResultsPage() {
   const { id } = useParams();
   const { showToast } = useToast();
   const [data, setData] = useState<any>(null);
+  const [voters, setVoters] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(0);
 
-  const fetchResults = async (silent = false) => {
+  const fetchData = async (silent = false) => {
+    // 1. Fetch main election results
     try {
-      const results = await getResults(Number(id));
+      const results = await getElection(Number(id));
       setData(results);
-      setLastUpdated(0);
-      if (!silent) setLoading(false);
     } catch (err) {
+      console.error("Results error", err);
       if (!silent) showToast('error', "Failed to load results");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+
+    // 2. Fetch voter audit list (independently)
+    try {
+      const voterList = await getElectionVoters(Number(id));
+      setVoters(voterList.voters || []);
+      setLastUpdated(0);
+    } catch (err) {
+      console.error("Voter audit error", err);
+      // We don't show an error toast here to keep the UI clean if only the audit fails
     }
   };
 
   useEffect(() => {
-    fetchResults();
-    const interval = setInterval(() => fetchResults(true), 15000);
+    fetchData();
+    const interval = setInterval(() => fetchData(true), 15000);
     const tick = setInterval(() => setLastUpdated(prev => prev + 1), 1000);
     return () => { clearInterval(interval); clearInterval(tick); };
   }, [id]);
@@ -184,8 +200,20 @@ export default function ResultsPage() {
 
       {/* Rankings Table */}
       <div className="bg-white dark:bg-gray-900 rounded-[2rem] shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-        <div className="p-8 border-b dark:border-gray-800">
+        <div className="p-8 border-b dark:border-gray-800 flex justify-between items-center">
           <h3 className="text-xl font-bold dark:text-white">Detailed Standings</h3>
+          <button 
+            onClick={() => exportToCSV(`${data.title}_Results.csv`, sortedCandidates.map(c => ({
+              Candidate: c.name,
+              Party: c.party,
+              Votes: c.vote_count,
+              Percentage: data.total_votes > 0 ? ((c.vote_count/data.total_votes)*100).toFixed(1) + '%' : '0%'
+            })))}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-gray-700"
+          >
+            <Download className="w-4 h-4" />
+            Download Report (CSV)
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -211,7 +239,18 @@ export default function ResultsPage() {
                       {i + 1}
                     </span>
                   </td>
-                  <td className="px-8 py-5 font-bold dark:text-white">{c.name}</td>
+                  <td className="px-8 py-5 font-bold dark:text-white">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-200 dark:border-gray-700">
+                        {c.image_url ? (
+                          <img src={c.image_url} alt={c.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-4 h-4 text-gray-400" />
+                        )}
+                      </div>
+                      {c.name}
+                    </div>
+                  </td>
                   <td className="px-8 py-5 text-sm text-gray-500">{c.party}</td>
                   <td className="px-8 py-5 text-right font-mono font-bold">{c.vote_count}</td>
                   <td className="px-8 py-5 text-right">
@@ -224,6 +263,46 @@ export default function ResultsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Participation Audit */}
+      <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl border border-gray-100 dark:border-gray-800 relative overflow-hidden">
+        <div className="flex items-center gap-3 mb-8">
+           <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-xl flex items-center justify-center">
+             <Users className="w-6 h-6" />
+           </div>
+           <div>
+             <h3 className="text-xl font-bold dark:text-white">Participation Audit</h3>
+             <p className="text-sm text-gray-500">Verified addresses that have cast a vote in this election.</p>
+           </div>
+        </div>
+
+        {voters.length === 0 ? (
+          <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-3xl">
+            <p className="text-gray-400 italic">No votes have been recorded yet.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-4 custom-scrollbar">
+            {voters.map((address, i) => (
+              <div key={i} className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl group hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-colors">
+                 <div className="w-8 h-8 bg-white dark:bg-gray-700 rounded-lg flex items-center justify-center text-[10px] font-bold text-indigo-400 shadow-sm border border-gray-100 dark:border-gray-600">
+                   {i + 1}
+                 </div>
+                 <div className="min-w-0">
+                    <p className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">{address}</p>
+                    <a 
+                      href={`https://sepolia.etherscan.io/address/${address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-indigo-500 hover:underline flex items-center gap-1 mt-0.5"
+                    >
+                      View on Chain <ExternalLink className="w-2 h-2" />
+                    </a>
+                 </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
